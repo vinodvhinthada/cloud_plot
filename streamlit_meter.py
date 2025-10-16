@@ -193,6 +193,6 @@ while True:
                     latest_slope = slopes[-1] if len(slopes) > 0 else np.nan
                     st.write(f"{metric}: {latest_slope:.4f}")
             st.write(f"Last updated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        else:
-            st.warning("No 'Timestamp' column found in data.")
-        time.sleep(REFRESH_INTERVAL)
+    else:
+        st.warning("No 'Timestamp' column found in data.")
+    time.sleep(REFRESH_INTERVAL)
