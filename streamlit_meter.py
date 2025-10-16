@@ -56,9 +56,22 @@ while True:
         df_today = df[(df["Timestamp"].dt.normalize() == today) &
                      (df["Timestamp"] >= market_open) &
                      (df["Timestamp"] <= market_close)]
+        import altair as alt
         with placeholder.container():
             if selected_cols:
-                st.line_chart(df_today.set_index("Timestamp")[selected_cols])
+                # Melt dataframe for Altair multi-line chart
+                df_melt = df_today.melt(id_vars=["Timestamp"], value_vars=selected_cols, var_name="Metric", value_name="Value")
+                chart = alt.Chart(df_melt).mark_line().encode(
+                    x=alt.X('Timestamp:T', title='Time'),
+                    y=alt.Y('Value:Q', title='Value', scale=alt.Scale(domain=[0, 1])),
+                    color='Metric:N'
+                ).properties(
+                    width=900,
+                    height=400
+                ).configure_axis(
+                    grid=True
+                )
+                st.altair_chart(chart, use_container_width=True)
             else:
                 st.info("Please select at least one plot to display.")
             st.write(f"Last updated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
