@@ -6,6 +6,16 @@ import time
 st.set_page_config(page_title="📊 NIFTY & BANKNIFTY Enhanced Meter Dashboard", layout="wide")
 st.title("📊 NIFTY & BANKNIFTY Enhanced Meter Dashboard")
 
+# Columns available for plotting
+plot_cols = ["Nifty_ISS", "Bank_ISS", "Nifty_PA_Zone", "Bank_PA_Zone", "Nifty_Price_Action", "Bank_Price_Action"]
+
+# Multiselect for user to choose plots
+selected_cols = st.multiselect(
+    "Select plots to display:",
+    options=plot_cols,
+    default=plot_cols
+)
+
 # New Google Sheets CSV URL
 url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQrpJFwXLrYYl35032xsjaKQdaIfEF5Zaqsw8Q9VfhxdBwqf_v9LOlISNT1UPOQDHA-3VFldvcz-ZSu/pub?output=csv"
 
@@ -17,8 +27,7 @@ while True:
     df = pd.read_csv(url)
 
     # Convert numeric columns
-    cols = ["Nifty_ISS", "Bank_ISS", "Nifty_PA_Zone", "Bank_PA_Zone", "Nifty_Price_Action", "Bank_Price_Action"]
-    for col in cols:
+    for col in plot_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
 
@@ -34,7 +43,10 @@ while True:
                      (df["Timestamp"] >= market_open) &
                      (df["Timestamp"] <= market_close)]
         with placeholder.container():
-            st.line_chart(df_today.set_index("Timestamp")[cols])
+            if selected_cols:
+                st.line_chart(df_today.set_index("Timestamp")[selected_cols])
+            else:
+                st.info("Please select at least one plot to display.")
             st.write(f"Last updated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
     else:
         st.warning("No 'Timestamp' column found in data.")
