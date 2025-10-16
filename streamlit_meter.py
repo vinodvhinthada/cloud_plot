@@ -37,33 +37,43 @@ while True:
     import numpy as np
     # --- Composite Meter Calculation for Nifty ---
     if all(col in df.columns for col in ["Nifty_ISS", "Nifty_Price_Action"]):
-        price_centered = df["Nifty_Price_Action"] - df["Nifty_Price_Action"].rolling(12).mean()
-        oi_centered = df["Nifty_ISS"] - df["Nifty_ISS"].rolling(12).mean()
-        adaptive_weight = np.clip((df["Nifty_ISS"] - 0.5) * 2, 0.2, 0.8)
-        composite = adaptive_weight * oi_centered + (1 - adaptive_weight) * price_centered
+        window_size = min(12, len(df))
+        normalized_oi = df["Nifty_ISS"]
+        normalized_pa = df["Nifty_Price_Action"]
+        oi_centered = normalized_oi - normalized_oi.rolling(window_size, min_periods=1).mean()
+        pa_centered = normalized_pa - normalized_pa.rolling(window_size, min_periods=1).mean()
+        adaptive_weight = np.clip((normalized_oi - 0.5) * 2, 0.2, 0.8)
+        composite = adaptive_weight * oi_centered + (1 - adaptive_weight) * pa_centered
         ema1 = composite.ewm(span=3, adjust=False).mean()
         ema2 = ema1.ewm(span=3, adjust=False).mean()
         smoothed_signal = 2 * ema1 - ema2
-        rolling_min = smoothed_signal.rolling(24).min()
-        rolling_max = smoothed_signal.rolling(24).max()
-        normalized_final = (smoothed_signal - rolling_min) / (rolling_max - rolling_min + 1e-8)
-        df["Nifty_Composite_Meter"] = normalized_final.clip(0, 1)
+        rolling_window = min(24, len(df))
+        rolling_min = smoothed_signal.rolling(rolling_window, min_periods=1).min()
+        rolling_max = smoothed_signal.rolling(rolling_window, min_periods=1).max()
+        range_diff = rolling_max - rolling_min + 1e-8
+        normalized_final = (smoothed_signal - rolling_min) / range_diff
+        df["Nifty_Composite_Meter"] = np.clip(normalized_final, 0, 1)
     else:
         df["Nifty_Composite_Meter"] = np.nan
 
     # --- Composite Meter Calculation for BankNifty ---
     if all(col in df.columns for col in ["Bank_ISS", "Bank_Price_Action"]):
-        price_centered = df["Bank_Price_Action"] - df["Bank_Price_Action"].rolling(12).mean()
-        oi_centered = df["Bank_ISS"] - df["Bank_ISS"].rolling(12).mean()
-        adaptive_weight = np.clip((df["Bank_ISS"] - 0.5) * 2, 0.2, 0.8)
-        composite = adaptive_weight * oi_centered + (1 - adaptive_weight) * price_centered
+        window_size = min(12, len(df))
+        normalized_oi = df["Bank_ISS"]
+        normalized_pa = df["Bank_Price_Action"]
+        oi_centered = normalized_oi - normalized_oi.rolling(window_size, min_periods=1).mean()
+        pa_centered = normalized_pa - normalized_pa.rolling(window_size, min_periods=1).mean()
+        adaptive_weight = np.clip((normalized_oi - 0.5) * 2, 0.2, 0.8)
+        composite = adaptive_weight * oi_centered + (1 - adaptive_weight) * pa_centered
         ema1 = composite.ewm(span=3, adjust=False).mean()
         ema2 = ema1.ewm(span=3, adjust=False).mean()
         smoothed_signal = 2 * ema1 - ema2
-        rolling_min = smoothed_signal.rolling(24).min()
-        rolling_max = smoothed_signal.rolling(24).max()
-        normalized_final = (smoothed_signal - rolling_min) / (rolling_max - rolling_min + 1e-8)
-        df["Bank_Composite_Meter"] = normalized_final.clip(0, 1)
+        rolling_window = min(24, len(df))
+        rolling_min = smoothed_signal.rolling(rolling_window, min_periods=1).min()
+        rolling_max = smoothed_signal.rolling(rolling_window, min_periods=1).max()
+        range_diff = rolling_max - rolling_min + 1e-8
+        normalized_final = (smoothed_signal - rolling_min) / range_diff
+        df["Bank_Composite_Meter"] = np.clip(normalized_final, 0, 1)
     else:
         df["Bank_Composite_Meter"] = np.nan
 
