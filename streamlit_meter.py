@@ -195,9 +195,4 @@ while True:
             st.write(f"Last updated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
         else:
             st.warning("No 'Timestamp' column found in data.")
-
-    time.sleep(REFRESH_INTERVAL)
-    else:
-        st.warning("No 'Timestamp' column found in data.")
-
-    time.sleep(REFRESH_INTERVAL)
+        time.sleep(REFRESH_INTERVAL)
