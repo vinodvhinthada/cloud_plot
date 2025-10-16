@@ -2,6 +2,19 @@ import streamlit as st
 import pandas as pd
 import requests
 import time
+import numpy as np
+
+def calc_slope(series, window=3):
+    slopes = [np.nan] * len(series)
+    for i in range(window, len(series)):
+        y = series[i-window:i]
+        x = np.arange(window)
+        if np.any(np.isnan(y)):
+            slopes[i] = np.nan
+        else:
+            slope = np.polyfit(x, y, 1)[0]  # slope of linear fit
+            slopes[i] = slope
+    return slopes
 
 st.set_page_config(page_title="📊 NIFTY & BANKNIFTY Enhanced Meter Dashboard", layout="wide")
 st.title("📊 NIFTY & BANKNIFTY Enhanced Meter Dashboard")
@@ -70,6 +83,14 @@ while True:
                     height=400
                 )
                 st.altair_chart(chart, use_container_width=True)
+
+                # Calculate and display latest slope for each selected metric
+                st.markdown("### Latest Slope Values (window=3)")
+                for metric in selected_cols:
+                    if metric in df_today.columns:
+                        slopes = calc_slope(df_today[metric].values, window=3)
+                        latest_slope = slopes[-1] if len(slopes) > 0 else np.nan
+                        st.write(f"{metric}: {latest_slope:.4f}")
             else:
                 st.info("Please select at least one plot to display.")
             st.write(f"Last updated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
