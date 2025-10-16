@@ -16,7 +16,7 @@ plot_cols = [
 selected_cols = st.multiselect(
     "Select plots to display:",
     options=plot_cols,
-    default=plot_cols
+    default=["Nifty_Composite", "Bank_Composite"]
 )
 
 # New Google Sheets CSV URL
@@ -62,14 +62,12 @@ while True:
                 # Melt dataframe for Altair multi-line chart
                 df_melt = df_today.melt(id_vars=["Timestamp"], value_vars=selected_cols, var_name="Metric", value_name="Value")
                 chart = alt.Chart(df_melt).mark_line().encode(
-                    x=alt.X('Timestamp:T', title='Time'),
-                    y=alt.Y('Value:Q', title='Value', scale=alt.Scale(domain=[0, 1])),
+                    x=alt.X('Timestamp:T', title='Time', axis=alt.Axis(grid=True)),
+                    y=alt.Y('Value:Q', title='Value', scale=alt.Scale(domain=[0, 1]), axis=alt.Axis(grid=True)),
                     color='Metric:N'
                 ).properties(
                     width=900,
                     height=400
-                ).configure_axis(
-                    grid=True
                 )
                 st.altair_chart(chart, use_container_width=True)
             else:
