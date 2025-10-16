@@ -22,12 +22,17 @@ while True:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
 
-    # Filter for today's data only
+    # Filter for today's data and market hours only
     if "Timestamp" in df.columns:
-        # Try to parse Timestamp to datetime
+        # Parse Timestamp to datetime
         df["Timestamp"] = pd.to_datetime(df["Timestamp"], errors='coerce')
         today = pd.Timestamp.now().normalize()
-        df_today = df[df["Timestamp"].dt.normalize() == today]
+        # Market hours: 09:15 to 15:30
+        market_open = pd.Timestamp.combine(today, pd.to_datetime("09:15").time())
+        market_close = pd.Timestamp.combine(today, pd.to_datetime("15:30").time())
+        df_today = df[(df["Timestamp"].dt.normalize() == today) &
+                     (df["Timestamp"] >= market_open) &
+                     (df["Timestamp"] <= market_close)]
         with placeholder.container():
             st.line_chart(df_today.set_index("Timestamp")[cols])
             st.write(f"Last updated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
