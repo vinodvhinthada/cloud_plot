@@ -7,7 +7,10 @@ st.set_page_config(page_title="📊 NIFTY & BANKNIFTY Enhanced Meter Dashboard",
 st.title("📊 NIFTY & BANKNIFTY Enhanced Meter Dashboard")
 
 # Columns available for plotting
-plot_cols = ["Nifty_ISS", "Bank_ISS", "Nifty_Price_Action", "Bank_Price_Action"]
+plot_cols = [
+    "Nifty_ISS", "Bank_ISS", "Nifty_Price_Action", "Bank_Price_Action",
+    "Nifty_Composite_Meter", "Bank_Composite_Meter"
+]
 
 # Multiselect for user to choose plots
 selected_cols = st.multiselect(
@@ -27,9 +30,42 @@ while True:
     df = pd.read_csv(url)
 
     # Convert numeric columns
-    for col in plot_cols:
+    for col in ["Nifty_ISS", "Bank_ISS", "Nifty_Price_Action", "Bank_Price_Action"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    import numpy as np
+    # --- Composite Meter Calculation for Nifty ---
+    if all(col in df.columns for col in ["Nifty_ISS", "Nifty_Price_Action"]):
+        price_centered = df["Nifty_Price_Action"] - df["Nifty_Price_Action"].rolling(12).mean()
+        oi_centered = df["Nifty_ISS"] - df["Nifty_ISS"].rolling(12).mean()
+        adaptive_weight = np.clip((df["Nifty_ISS"] - 0.5) * 2, 0.2, 0.8)
+        composite = adaptive_weight * oi_centered + (1 - adaptive_weight) * price_centered
+        ema1 = composite.ewm(span=3, adjust=False).mean()
+        ema2 = ema1.ewm(span=3, adjust=False).mean()
+        smoothed_signal = 2 * ema1 - ema2
+        rolling_min = smoothed_signal.rolling(24).min()
+        rolling_max = smoothed_signal.rolling(24).max()
+        normalized_final = (smoothed_signal - rolling_min) / (rolling_max - rolling_min + 1e-8)
+        df["Nifty_Composite_Meter"] = normalized_final.clip(0, 1)
+    else:
+        df["Nifty_Composite_Meter"] = np.nan
+
+    # --- Composite Meter Calculation for BankNifty ---
+    if all(col in df.columns for col in ["Bank_ISS", "Bank_Price_Action"]):
+        price_centered = df["Bank_Price_Action"] - df["Bank_Price_Action"].rolling(12).mean()
+        oi_centered = df["Bank_ISS"] - df["Bank_ISS"].rolling(12).mean()
+        adaptive_weight = np.clip((df["Bank_ISS"] - 0.5) * 2, 0.2, 0.8)
+        composite = adaptive_weight * oi_centered + (1 - adaptive_weight) * price_centered
+        ema1 = composite.ewm(span=3, adjust=False).mean()
+        ema2 = ema1.ewm(span=3, adjust=False).mean()
+        smoothed_signal = 2 * ema1 - ema2
+        rolling_min = smoothed_signal.rolling(24).min()
+        rolling_max = smoothed_signal.rolling(24).max()
+        normalized_final = (smoothed_signal - rolling_min) / (rolling_max - rolling_min + 1e-8)
+        df["Bank_Composite_Meter"] = normalized_final.clip(0, 1)
+    else:
+        df["Bank_Composite_Meter"] = np.nan
 
     # Filter for today's data and market hours only
     if "Timestamp" in df.columns:
