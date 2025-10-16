@@ -6,15 +6,15 @@ import time
 st.set_page_config(page_title="📊 NIFTY & BANKNIFTY Enhanced Meter Dashboard", layout="wide")
 st.title("📊 NIFTY & BANKNIFTY Enhanced Meter Dashboard")
 
-url = "https://sheet.best/api/sheets/1Rw8fu7R0NZJpI2au_SKTs2-6N6qHcoA5snyBcMmtkxc"
+# New Google Sheets CSV URL
+url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQrpJFwXLrYYl35032xsjaKQdaIfEF5Zaqsw8Q9VfhxdBwqf_v9LOlISNT1UPOQDHA-3VFldvcz-ZSu/pub?output=csv"
 
 REFRESH_INTERVAL = 300  # seconds (5 minutes)
 
 placeholder = st.empty()
 
 while True:
-    data = requests.get(url).json()
-    df = pd.DataFrame(data)
+    df = pd.read_csv(url)
 
     # Convert numeric columns
     cols = ["Nifty_ISS", "Bank_ISS", "Nifty_PA_Zone", "Bank_PA_Zone", "Nifty_Price_Action", "Bank_Price_Action"]
