@@ -7,7 +7,7 @@ st.set_page_config(page_title="📊 NIFTY & BANKNIFTY Enhanced Meter Dashboard",
 st.title("📊 NIFTY & BANKNIFTY Enhanced Meter Dashboard")
 
 # Columns available for plotting
-plot_cols = ["Nifty_ISS", "Bank_ISS", "Nifty_PA_Zone", "Bank_PA_Zone", "Nifty_Price_Action", "Bank_Price_Action"]
+plot_cols = ["Nifty_ISS", "Bank_ISS", "Nifty_Price_Action", "Bank_Price_Action"]
 
 # Multiselect for user to choose plots
 selected_cols = st.multiselect(
