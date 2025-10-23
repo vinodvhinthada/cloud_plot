@@ -1,3 +1,15 @@
+"""
+Signal-to-Symbol Mapping Reference:
+
+| Signal Type           | Symbol   |
+|-----------------------|----------|
+| ENTER-LONG            | 🟢       |
+| EXIT-LONG             | 🚪       |
+| REVERSE-ENTER-SHORT   | 🔄🔴     |
+| ENTER-SHORT           | 🔴       |
+| EXIT-SHORT            | 🚪       |
+| REVERSE-ENTER-LONG    | 🔄🟢     |
+"""
 import streamlit as st
 import pandas as pd
 import requests
