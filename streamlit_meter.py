@@ -67,61 +67,98 @@ while True:
         df["Bank_Slope"] = np.nan
 
     # --- Trading Signal Detection Logic ---
-    def detect_signals(meter, slope, timestamps):
-        position = "FLAT"
+    def detect_signals(meter, price, timestamps):
+        import datetime
+        state = {
+            "position": None,
+            "highest_since_entry": 0,
+            "lowest_since_entry": 1,
+            "last_signal_time": None,
+            "meter_history": [],
+            "prev_meter": None
+        }
         signals = []
-        up_trigger = 0.6
-        down_trigger = 0.4
+        for i in range(len(meter)):
+            curr_meter = meter[i]
+            curr_price = price[i]
+            timestamp = timestamps[i]
 
-        for i in range(1, len(meter)):
-            curr = meter[i]
-            prev = meter[i-1]
-            curr_time = timestamps[i]
+            # Calculate slope
+            slope = curr_meter - state["prev_meter"] if state["prev_meter"] is not None else 0
+            state["prev_meter"] = curr_meter
 
-            # --- Entry Long ---
-            if position == "FLAT" and curr > up_trigger and prev <= up_trigger:
+            # Update highest/lowest since entry
+            if state["position"] == "LONG":
+                state["highest_since_entry"] = max(state["highest_since_entry"], curr_meter)
+            elif state["position"] == "SHORT":
+                state["lowest_since_entry"] = min(state["lowest_since_entry"], curr_meter)
+            else:
+                state["highest_since_entry"] = curr_meter
+                state["lowest_since_entry"] = curr_meter
+
+            drop_from_high = (state["highest_since_entry"] - curr_meter)/state["highest_since_entry"] if state["highest_since_entry"] else 0
+            rise_from_low = (curr_meter - state["lowest_since_entry"])/state["lowest_since_entry"] if state["lowest_since_entry"] else 0
+
+            # Maintain last 3 meter readings
+            state["meter_history"].append(curr_meter)
+            if len(state["meter_history"]) > 3:
+                state["meter_history"].pop(0)
+
+            # Minimum time gap filter (10 min)
+            if state["last_signal_time"]:
+                try:
+                    time_diff = (datetime.datetime.strptime(str(timestamp), "%Y-%m-%d %H:%M") -
+                                 datetime.datetime.strptime(str(state["last_signal_time"]), "%Y-%m-%d %H:%M")).total_seconds()/60
+                    if time_diff < 10:
+                        continue
+                except Exception:
+                    pass
+
+            signal = None
+
+            # LONG Logic
+            if state["position"] != "LONG" and curr_meter > 0.6 and slope > 0 and curr_price > 0.5:
+                signal = "ENTER-LONG"
+                state["position"] = "LONG"
+                state["highest_since_entry"] = curr_meter
+                state["lowest_since_entry"] = curr_meter
+
+            elif state["position"] == "LONG" and (drop_from_high >= 0.1 or curr_meter < 0.65 or (len(state["meter_history"]) >= 3 and all(x < state["meter_history"][-2] for x in state["meter_history"][-3:]))):
+                signal = "EXIT-LONG"
+                state["position"] = None
+
+            elif curr_meter < 0.5 and slope < 0:
+                signal = "REVERSE-ENTER-SHORT"
+                state["position"] = "SHORT"
+                state["highest_since_entry"] = curr_meter
+                state["lowest_since_entry"] = curr_meter
+
+            # SHORT Logic
+            elif state["position"] != "SHORT" and curr_meter < 0.5 and slope < 0 and curr_price < 0.6:
+                signal = "ENTER-SHORT"
+                state["position"] = "SHORT"
+                state["highest_since_entry"] = curr_meter
+                state["lowest_since_entry"] = curr_meter
+
+            elif state["position"] == "SHORT" and (rise_from_low >= 0.1 or curr_meter > 0.45 or (len(state["meter_history"]) >= 3 and all(x > state["meter_history"][-2] for x in state["meter_history"][-3:]))):
+                signal = "EXIT-SHORT"
+                state["position"] = None
+
+            elif curr_meter > 0.6 and slope > 0:
+                signal = "REVERSE-ENTER-LONG"
+                state["position"] = "LONG"
+                state["highest_since_entry"] = curr_meter
+                state["lowest_since_entry"] = curr_meter
+
+            if signal:
+                state["last_signal_time"] = timestamp
                 signals.append({
-                    'Type': 'ENTRY-LONG',
-                    'Time': curr_time,
-                    'Value': curr,
-                    'Color': '#388E3C',
-                    'Text': '🟢 ENTRY-LONG'
+                    "Time": timestamp,
+                    "Value": curr_meter,
+                    "Type": signal,
+                    "Color": '#388E3C' if 'LONG' in signal else '#D32F2F' if 'SHORT' in signal else '#FF9800',
+                    "Text": f"{signal}"
                 })
-                position = "LONG"
-
-            # --- Exit Long ---
-            elif position == "LONG" and curr < up_trigger and prev >= up_trigger:
-                signals.append({
-                    'Type': 'EXIT-LONG',
-                    'Time': curr_time,
-                    'Value': curr,
-                    'Color': '#FF9800',
-                    'Text': '🚪 EXIT-LONG'
-                })
-                position = "FLAT"
-
-            # --- Entry Short ---
-            elif position == "FLAT" and curr < down_trigger and prev >= down_trigger:
-                signals.append({
-                    'Type': 'ENTRY-SHORT',
-                    'Time': curr_time,
-                    'Value': curr,
-                    'Color': '#D32F2F',
-                    'Text': '🔴 ENTRY-SHORT'
-                })
-                position = "SHORT"
-
-            # --- Exit Short ---
-            elif position == "SHORT" and curr > down_trigger and prev <= down_trigger:
-                signals.append({
-                    'Type': 'EXIT-SHORT',
-                    'Time': curr_time,
-                    'Value': curr,
-                    'Color': '#4CAF50',
-                    'Text': '🟢 EXIT-SHORT'
-                })
-                position = "FLAT"
-
         return signals
 
     # Filter for today's data and market hours only
