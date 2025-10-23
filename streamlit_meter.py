@@ -225,17 +225,24 @@ while True:
                 )
 
             # --- Trading Signal Markers ---
-            nifty_signals = detect_signals(
-                df_plot["Nifty_Composite"].values,
-                df_plot["Nifty_Slope"].values,
-                df_plot["Time"].values
-            )
-            bank_signals = detect_signals(
-                df_plot["Bank_Composite"].values,
-                df_plot["Bank_Slope"].values,
-                df_plot["Time"].values
-            )
-            all_signals = pd.DataFrame(nifty_signals + bank_signals)
+            all_signals = pd.DataFrame()
+            if "Nifty_Composite" in selected_cols:
+                nifty_signals = detect_signals(
+                    df_plot["Nifty_Composite"].values,
+                    df_plot["Nifty_Slope"].values,
+                    df_plot["Time"].values
+                )
+                all_signals = pd.DataFrame(nifty_signals)
+            if "Bank_Composite" in selected_cols:
+                bank_signals = detect_signals(
+                    df_plot["Bank_Composite"].values,
+                    df_plot["Bank_Slope"].values,
+                    df_plot["Time"].values
+                )
+                if all_signals.empty:
+                    all_signals = pd.DataFrame(bank_signals)
+                else:
+                    all_signals = pd.concat([all_signals, pd.DataFrame(bank_signals)], ignore_index=True)
 
             signal_layer = alt.Chart(all_signals).mark_text(fontSize=16, fontWeight='bold', dy=-10).encode(
                 x='Time:T',
