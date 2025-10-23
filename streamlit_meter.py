@@ -284,7 +284,7 @@ while True:
             if "Bank_Composite" in selected_cols:
                 bank_signals = detect_signals(
                     df_plot["Bank_Composite"].values,
-                    df_plot["Bank_Price"].values,
+                    df_plot["Bank_Price_Action"].values,
                     df_plot["Time"].values,
                     "BANKNIFTY"
                 )
