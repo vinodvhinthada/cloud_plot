@@ -306,7 +306,12 @@ while True:
                 x='Time:T',
                 y='Value:Q',
                 text='Text:N',
-                color='Color:N'
+                color='Color:N',
+                tooltip=[
+                    alt.Tooltip('Time:T', title='Time'),
+                    alt.Tooltip('Type:N', title='Signal'),
+                    alt.Tooltip('Value:Q', title='Meter Value')
+                ]
             ) if not all_signals.empty else alt.Chart(pd.DataFrame({'Time':[], 'Value':[], 'Text':[], 'Color':[]})).mark_text()
             if vline_layer is not None:
                 chart_layers.append(vline_layer)
