@@ -67,8 +67,25 @@ while True:
         df["Bank_Slope"] = np.nan
 
     # --- Trading Signal Detection Logic ---
+    # Signal symbol mapping reference:
+    # SIGNAL_SYMBOLS = {
+    #     "ENTER-LONG": "🟢",
+    #     "EXIT-LONG": "🚪",
+    #     "REVERSE-ENTER-SHORT": "🔄🔴",
+    #     "ENTER-SHORT": "🔴",
+    #     "EXIT-SHORT": "🚪",
+    #     "REVERSE-ENTER-LONG": "🔄🟢"
+    # }
     def detect_signals(meter, price, timestamps):
         import datetime
+        SIGNAL_SYMBOLS = {
+            "ENTER-LONG": "🟢",
+            "EXIT-LONG": "🚪",
+            "REVERSE-ENTER-SHORT": "🔄🔴",
+            "ENTER-SHORT": "🔴",
+            "EXIT-SHORT": "🚪",
+            "REVERSE-ENTER-LONG": "🔄🟢"
+        }
         state = {
             "position": None,
             "highest_since_entry": 0,
@@ -157,7 +174,7 @@ while True:
                     "Value": curr_meter,
                     "Type": signal,
                     "Color": '#388E3C' if 'LONG' in signal else '#D32F2F' if 'SHORT' in signal else '#FF9800',
-                    "Text": f"{signal}"
+                    "Text": SIGNAL_SYMBOLS.get(signal, '')
                 })
         return signals
 
