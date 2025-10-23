@@ -159,11 +159,7 @@ while True:
                      (df["Timestamp"] <= market_close)]
         import altair as alt
         with placeholder.container():
-            # Only show composite plots by default
-            composite_metrics = ["Nifty_Composite", "Bank_Composite"]
-            smooth_metrics = ["Nifty_Smooth", "Bank_Smooth"]
-            slope_metrics = ["Nifty_Slope", "Bank_Slope"]
-            # Prepare data for Altair
+            # ...existing code...
             df_plot = df_today.copy()
             df_plot["Time"] = df_plot["Timestamp"]
 
@@ -173,45 +169,60 @@ while True:
                 alt.Chart(pd.DataFrame({"y": [0.45, 0.55]})).mark_rect(opacity=0.08, color="#999").encode(y="y", y2="y")
             ]
 
-            # Composite lines
-            lines = alt.Chart(df_plot).mark_line(strokeWidth=2).encode(
-                x=alt.X('Time:T', title='Time', axis=alt.Axis(grid=True, labelAngle=0, tickCount=10)),
-                y=alt.Y('Nifty_Composite:Q', title='Composite Value', scale=alt.Scale(domain=[0, 1]), axis=alt.Axis(grid=True)),
-                color=alt.value('#2196F3'),
-                tooltip=['Time:T', 'Nifty_Composite:Q']
-            ).properties(width=900, height=400)
-            lines2 = alt.Chart(df_plot).mark_line(strokeWidth=2).encode(
-                x='Time:T',
-                y='Bank_Composite:Q',
-                color=alt.value('#FF5722'),
-                tooltip=['Time:T', 'Bank_Composite:Q']
-            )
-
-            # Smooth lines
-            smooth1 = alt.Chart(df_plot).mark_line(strokeWidth=3).encode(
-                x='Time:T',
-                y='Nifty_Smooth:Q',
-                color=alt.value('#1976D2'),
-                tooltip=['Time:T', 'Nifty_Smooth:Q']
-            )
-            smooth2 = alt.Chart(df_plot).mark_line(strokeWidth=3).encode(
-                x='Time:T',
-                y='Bank_Smooth:Q',
-                color=alt.value('#E64A19'),
-                tooltip=['Time:T', 'Bank_Smooth:Q']
-            )
-
-            # Slope lines (momentum)
-            slope1 = alt.Chart(df_plot).mark_line(strokeDash=[4,2], color='#4CAF50', opacity=0.5).encode(
-                x='Time:T',
-                y='Nifty_Slope:Q',
-                tooltip=['Time:T', 'Nifty_Slope:Q']
-            )
-            slope2 = alt.Chart(df_plot).mark_line(strokeDash=[4,2], color='#F44336', opacity=0.5).encode(
-                x='Time:T',
-                y='Bank_Slope:Q',
-                tooltip=['Time:T', 'Bank_Slope:Q']
-            )
+            # Plot only selected columns
+            chart_layers = [*ref_bands]
+            if "Nifty_Composite" in selected_cols:
+                chart_layers.append(
+                    alt.Chart(df_plot).mark_line(strokeWidth=2).encode(
+                        x=alt.X('Time:T', title='Time', axis=alt.Axis(grid=True, labelAngle=0, tickCount=10)),
+                        y=alt.Y('Nifty_Composite:Q', title='Nifty Composite', scale=alt.Scale(domain=[0, 1]), axis=alt.Axis(grid=True)),
+                        color=alt.value('#2196F3'),
+                        tooltip=['Time:T', 'Nifty_Composite:Q']
+                    ).properties(width=900, height=400)
+                )
+            if "Bank_Composite" in selected_cols:
+                chart_layers.append(
+                    alt.Chart(df_plot).mark_line(strokeWidth=2).encode(
+                        x='Time:T',
+                        y=alt.Y('Bank_Composite:Q', title='Bank Composite', scale=alt.Scale(domain=[0, 1]), axis=alt.Axis(grid=True)),
+                        color=alt.value('#FF5722'),
+                        tooltip=['Time:T', 'Bank_Composite:Q']
+                    )
+                )
+            if "Nifty_Smooth" in selected_cols:
+                chart_layers.append(
+                    alt.Chart(df_plot).mark_line(strokeWidth=3).encode(
+                        x='Time:T',
+                        y='Nifty_Smooth:Q',
+                        color=alt.value('#1976D2'),
+                        tooltip=['Time:T', 'Nifty_Smooth:Q']
+                    )
+                )
+            if "Bank_Smooth" in selected_cols:
+                chart_layers.append(
+                    alt.Chart(df_plot).mark_line(strokeWidth=3).encode(
+                        x='Time:T',
+                        y='Bank_Smooth:Q',
+                        color=alt.value('#E64A19'),
+                        tooltip=['Time:T', 'Bank_Smooth:Q']
+                    )
+                )
+            if "Nifty_Slope" in selected_cols:
+                chart_layers.append(
+                    alt.Chart(df_plot).mark_line(strokeDash=[4,2], color='#4CAF50', opacity=0.5).encode(
+                        x='Time:T',
+                        y='Nifty_Slope:Q',
+                        tooltip=['Time:T', 'Nifty_Slope:Q']
+                    )
+                )
+            if "Bank_Slope" in selected_cols:
+                chart_layers.append(
+                    alt.Chart(df_plot).mark_line(strokeDash=[4,2], color='#F44336', opacity=0.5).encode(
+                        x='Time:T',
+                        y='Bank_Slope:Q',
+                        tooltip=['Time:T', 'Bank_Slope:Q']
+                    )
+                )
 
             # --- Trading Signal Markers ---
             nifty_signals = detect_signals(
@@ -232,20 +243,10 @@ while True:
                 text='Text:N',
                 color='Color:N'
             ) if not all_signals.empty else alt.Chart(pd.DataFrame({'Time':[], 'Value':[], 'Text':[], 'Color':[]})).mark_text()
+            chart_layers.append(signal_layer)
 
             # Compose chart
-            chart = alt.layer(
-                *ref_bands,
-                lines, lines2,
-                smooth1, smooth2,
-                slope1, slope2,
-                signal_layer
-            ).resolve_scale(
-                y='shared'
-            ).properties(
-                width=900,
-                height=400
-            )
+            chart = alt.layer(*chart_layers).resolve_scale(y='shared').properties(width=900, height=400)
             st.altair_chart(chart, use_container_width=True)
 
             # Calculate and display latest slope for each selected metric
