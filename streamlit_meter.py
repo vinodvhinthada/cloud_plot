@@ -1,15 +1,3 @@
-"""
-Signal-to-Symbol Mapping Reference:
-
-| Signal Type           | Symbol   |
-|-----------------------|----------|
-| ENTER-LONG            | 🟢       |
-| EXIT-LONG             | 🚪       |
-| REVERSE-ENTER-SHORT   | 🔄🔴     |
-| ENTER-SHORT           | 🔴       |
-| EXIT-SHORT            | 🚪       |
-| REVERSE-ENTER-LONG    | 🔄🟢     |
-"""
 import streamlit as st
 import pandas as pd
 import requests
@@ -30,20 +18,6 @@ def calc_slope(series, window=3):
 
 st.set_page_config(page_title="📊 NIFTY & BANKNIFTY Enhanced Meter Dashboard", layout="wide")
 st.title("📊 NIFTY & BANKNIFTY Enhanced Meter Dashboard")
-
-# Display signal-to-symbol mapping table in the Streamlit layout
-st.markdown("""
-### Signal-to-Symbol Mapping
-
-| Signal Type           | Symbol   |
-|-----------------------|----------|
-| ENTER-LONG            | 🟢       |
-| EXIT-LONG             | 🚪       |
-| REVERSE-ENTER-SHORT   | 🔄🔴     |
-| ENTER-SHORT           | 🔴       |
-| EXIT-SHORT            | 🚪       |
-| REVERSE-ENTER-LONG    | 🔄🟢     |
-""")
 
 # Columns available for plotting
 plot_cols = [
@@ -93,25 +67,8 @@ while True:
         df["Bank_Slope"] = np.nan
 
     # --- Trading Signal Detection Logic ---
-    # Signal symbol mapping reference:
-    # SIGNAL_SYMBOLS = {
-    #     "ENTER-LONG": "🟢",
-    #     "EXIT-LONG": "🚪",
-    #     "REVERSE-ENTER-SHORT": "🔄🔴",
-    #     "ENTER-SHORT": "🔴",
-    #     "EXIT-SHORT": "🚪",
-    #     "REVERSE-ENTER-LONG": "🔄🟢"
-    # }
     def detect_signals(meter, price, timestamps):
         import datetime
-        SIGNAL_SYMBOLS = {
-            "ENTER-LONG": "🟢",
-            "EXIT-LONG": "🚪",
-            "REVERSE-ENTER-SHORT": "🔄🔴",
-            "ENTER-SHORT": "🔴",
-            "EXIT-SHORT": "🚪",
-            "REVERSE-ENTER-LONG": "🔄🟢"
-        }
         state = {
             "position": None,
             "highest_since_entry": 0,
@@ -200,7 +157,7 @@ while True:
                     "Value": curr_meter,
                     "Type": signal,
                     "Color": '#388E3C' if 'LONG' in signal else '#D32F2F' if 'SHORT' in signal else '#FF9800',
-                    "Text": SIGNAL_SYMBOLS.get(signal, '')
+                    "Text": f"{signal}"
                 })
         return signals
 
