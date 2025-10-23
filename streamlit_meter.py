@@ -276,7 +276,7 @@ while True:
             if "Nifty_Composite" in selected_cols:
                 nifty_signals = detect_signals(
                     df_plot["Nifty_Composite"].values,
-                    df_plot["Nifty_Price"].values,
+                    df_plot["Nifty_Price_Action"].values,
                     df_plot["Time"].values,
                     "NIFTY"
                 )
