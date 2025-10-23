@@ -276,15 +276,17 @@ while True:
             if "Nifty_Composite" in selected_cols:
                 nifty_signals = detect_signals(
                     df_plot["Nifty_Composite"].values,
-                    df_plot["Nifty_Slope"].values,
-                    df_plot["Time"].values
+                    df_plot["Nifty_Price"].values,
+                    df_plot["Time"].values,
+                    "NIFTY"
                 )
                 all_signals = pd.DataFrame(nifty_signals)
             if "Bank_Composite" in selected_cols:
                 bank_signals = detect_signals(
                     df_plot["Bank_Composite"].values,
-                    df_plot["Bank_Slope"].values,
-                    df_plot["Time"].values
+                    df_plot["Bank_Price"].values,
+                    df_plot["Time"].values,
+                    "BANKNIFTY"
                 )
                 if all_signals.empty:
                     all_signals = pd.DataFrame(bank_signals)
