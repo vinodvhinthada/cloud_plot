@@ -22,7 +22,8 @@ st.title("📊 NIFTY & BANKNIFTY Enhanced Meter Dashboard")
 # Columns available for plotting
 plot_cols = [
     "Nifty_ISS", "Bank_ISS", "Nifty_Price_Action", "Bank_Price_Action",
-    "Nifty_Composite", "Bank_Composite"
+    "Nifty_Composite", "Bank_Composite",
+    "Nifty_Smooth", "Bank_Smooth", "Nifty_Slope", "Bank_Slope"
 ]
 
 # Multiselect for user to choose plots
