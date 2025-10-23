@@ -244,12 +244,23 @@ while True:
                 else:
                     all_signals = pd.concat([all_signals, pd.DataFrame(bank_signals)], ignore_index=True)
 
+
+            # Draw vertical lines at each signal time
+            if not all_signals.empty:
+                vline_layer = alt.Chart(all_signals).mark_rule(strokeDash=[2,2], color='#222', strokeWidth=1).encode(
+                    x='Time:T'
+                )
+            else:
+                vline_layer = None
+
             signal_layer = alt.Chart(all_signals).mark_text(fontSize=16, fontWeight='bold', dy=-10).encode(
                 x='Time:T',
                 y='Value:Q',
                 text='Text:N',
                 color='Color:N'
             ) if not all_signals.empty else alt.Chart(pd.DataFrame({'Time':[], 'Value':[], 'Text':[], 'Color':[]})).mark_text()
+            if vline_layer is not None:
+                chart_layers.append(vline_layer)
             chart_layers.append(signal_layer)
 
             # Compose chart
