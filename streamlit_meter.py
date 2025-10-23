@@ -69,13 +69,16 @@ while True:
     # --- Trading Signal Detection Logic ---
     def detect_signals(meter, slope, timestamps):
         signals = []
-        for i in range(2, len(meter)):
+        position = None  # track current state: 'LONG', 'SHORT', or None
+
+        for i in range(3, len(meter)):
             curr_meter = meter[i]
             prev_meter = meter[i-1]
             curr_slope = slope[i]
             prev_slope = slope[i-1]
-            # Entry LONG
-            if curr_meter >= 0.55 and curr_slope >= 0.03 and meter[i-2] < curr_meter and prev_meter < curr_meter:
+
+            # === ENTRY LONG ===
+            if position is None and curr_meter >= 0.55 and curr_slope >= 0.03 and meter[i-2] < curr_meter:
                 signals.append({
                     'Time': timestamps[i],
                     'Value': curr_meter,
@@ -83,17 +86,22 @@ while True:
                     'Color': '#388E3C',
                     'Text': '🟢 ENTRY-LONG'
                 })
-            # Continue holding
-            elif curr_meter >= 0.60 and curr_slope > 0.01:
-                signals.append({
-                    'Time': timestamps[i],
-                    'Value': curr_meter,
-                    'Type': 'HOLD-LONG',
-                    'Color': '#1976D2',
-                    'Text': '📈 HOLD-LONG'
-                })
-            # Exit LONG
-            elif curr_meter > 0.65 and curr_slope < 0.01:
+                position = 'LONG'
+
+            # === HOLD LONG ===
+            elif position == 'LONG' and curr_meter >= 0.60 and curr_slope > 0.01:
+                # only 1 hold per new rise
+                if len(signals) == 0 or signals[-1]['Type'] != 'HOLD-LONG':
+                    signals.append({
+                        'Time': timestamps[i],
+                        'Value': curr_meter,
+                        'Type': 'HOLD-LONG',
+                        'Color': '#1976D2',
+                        'Text': '📈 HOLD-LONG'
+                    })
+
+            # === EXIT LONG ===
+            elif position == 'LONG' and ((curr_meter > 0.65 and curr_slope < 0.01) or curr_slope < 0):
                 signals.append({
                     'Time': timestamps[i],
                     'Value': curr_meter,
@@ -101,25 +109,32 @@ while True:
                     'Color': '#FF9800',
                     'Text': '🚪 EXIT-LONG'
                 })
-            elif curr_slope < 0:
-                signals.append({
-                    'Time': timestamps[i],
-                    'Value': curr_meter,
-                    'Type': 'EXIT-LONG',
-                    'Color': '#FF9800',
-                    'Text': '🚪 EXIT-LONG'
-                })
-            # Entry SHORT
-            if curr_meter < 0.45 and curr_slope <= -0.03 and meter[i-2] > curr_meter and prev_meter > curr_meter:
+                position = None
+
+            # === ENTRY SHORT ===
+            elif position is None and curr_meter < 0.45 and curr_slope <= -0.03 and meter[i-2] > curr_meter:
                 signals.append({
                     'Time': timestamps[i],
                     'Value': curr_meter,
                     'Type': 'ENTRY-SHORT',
                     'Color': '#D32F2F',
-                    'Text': '🔴 ENTRY-SHORT'
+                    'Text': '� ENTRY-SHORT'
                 })
-            # Exit SHORT
-            elif curr_meter < 0.35 and abs(curr_slope) < 0.01:
+                position = 'SHORT'
+
+            # === HOLD SHORT ===
+            elif position == 'SHORT' and curr_meter <= 0.40 and curr_slope < -0.01:
+                if len(signals) == 0 or signals[-1]['Type'] != 'HOLD-SHORT':
+                    signals.append({
+                        'Time': timestamps[i],
+                        'Value': curr_meter,
+                        'Type': 'HOLD-SHORT',
+                        'Color': '#F44336',
+                        'Text': '� HOLD-SHORT'
+                    })
+
+            # === EXIT SHORT ===
+            elif position == 'SHORT' and ((curr_meter < 0.35 and abs(curr_slope) < 0.01) or curr_slope > 0):
                 signals.append({
                     'Time': timestamps[i],
                     'Value': curr_meter,
@@ -127,6 +142,8 @@ while True:
                     'Color': '#4CAF50',
                     'Text': '🟢 EXIT-SHORT'
                 })
+                position = None
+
         return signals
 
     # Filter for today's data and market hours only
