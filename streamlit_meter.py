@@ -30,7 +30,7 @@ plot_cols = [
 selected_cols = st.multiselect(
     "Select plots to display:",
     options=plot_cols,
-    default=plot_cols
+    default=["Nifty_Composite", "Bank_Composite"]
 )
 
 # New Google Sheets CSV URL
