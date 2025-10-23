@@ -31,6 +31,20 @@ def calc_slope(series, window=3):
 st.set_page_config(page_title="📊 NIFTY & BANKNIFTY Enhanced Meter Dashboard", layout="wide")
 st.title("📊 NIFTY & BANKNIFTY Enhanced Meter Dashboard")
 
+# Display signal-to-symbol mapping table in the Streamlit layout
+st.markdown("""
+### Signal-to-Symbol Mapping
+
+| Signal Type           | Symbol   |
+|-----------------------|----------|
+| ENTER-LONG            | 🟢       |
+| EXIT-LONG             | 🚪       |
+| REVERSE-ENTER-SHORT   | 🔄🔴     |
+| ENTER-SHORT           | 🔴       |
+| EXIT-SHORT            | 🚪       |
+| REVERSE-ENTER-LONG    | 🔄🟢     |
+""")
+
 # Columns available for plotting
 plot_cols = [
     "Nifty_ISS", "Bank_ISS", "Nifty_Price_Action", "Bank_Price_Action",
