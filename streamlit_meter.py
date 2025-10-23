@@ -50,13 +50,84 @@ while True:
     # --- Simple Composite Calculation for Chart (match webapp) ---
     if all(col in df.columns for col in ["Nifty_ISS", "Nifty_Price_Action"]):
         df["Nifty_Composite"] = (df["Nifty_ISS"] + df["Nifty_Price_Action"]) / 2
+        df["Nifty_Smooth"] = df["Nifty_Composite"].rolling(5).mean()
+        df["Nifty_Slope"] = df["Nifty_Composite"].diff().rolling(3).mean()
     else:
         df["Nifty_Composite"] = np.nan
+        df["Nifty_Smooth"] = np.nan
+        df["Nifty_Slope"] = np.nan
 
     if all(col in df.columns for col in ["Bank_ISS", "Bank_Price_Action"]):
         df["Bank_Composite"] = (df["Bank_ISS"] + df["Bank_Price_Action"]) / 2
+        df["Bank_Smooth"] = df["Bank_Composite"].rolling(5).mean()
+        df["Bank_Slope"] = df["Bank_Composite"].diff().rolling(3).mean()
     else:
         df["Bank_Composite"] = np.nan
+        df["Bank_Smooth"] = np.nan
+        df["Bank_Slope"] = np.nan
+
+    # --- Trading Signal Detection Logic ---
+    def detect_signals(meter, slope, timestamps):
+        signals = []
+        for i in range(2, len(meter)):
+            curr_meter = meter[i]
+            prev_meter = meter[i-1]
+            curr_slope = slope[i]
+            prev_slope = slope[i-1]
+            # Entry LONG
+            if curr_meter >= 0.55 and curr_slope >= 0.03 and meter[i-2] < curr_meter and prev_meter < curr_meter:
+                signals.append({
+                    'Time': timestamps[i],
+                    'Value': curr_meter,
+                    'Type': 'ENTRY-LONG',
+                    'Color': '#388E3C',
+                    'Text': '🟢 ENTRY-LONG'
+                })
+            # Continue holding
+            elif curr_meter >= 0.60 and curr_slope > 0.01:
+                signals.append({
+                    'Time': timestamps[i],
+                    'Value': curr_meter,
+                    'Type': 'HOLD-LONG',
+                    'Color': '#1976D2',
+                    'Text': '📈 HOLD-LONG'
+                })
+            # Exit LONG
+            elif curr_meter > 0.65 and curr_slope < 0.01:
+                signals.append({
+                    'Time': timestamps[i],
+                    'Value': curr_meter,
+                    'Type': 'EXIT-LONG',
+                    'Color': '#FF9800',
+                    'Text': '🚪 EXIT-LONG'
+                })
+            elif curr_slope < 0:
+                signals.append({
+                    'Time': timestamps[i],
+                    'Value': curr_meter,
+                    'Type': 'EXIT-LONG',
+                    'Color': '#FF9800',
+                    'Text': '🚪 EXIT-LONG'
+                })
+            # Entry SHORT
+            if curr_meter < 0.45 and curr_slope <= -0.03 and meter[i-2] > curr_meter and prev_meter > curr_meter:
+                signals.append({
+                    'Time': timestamps[i],
+                    'Value': curr_meter,
+                    'Type': 'ENTRY-SHORT',
+                    'Color': '#D32F2F',
+                    'Text': '🔴 ENTRY-SHORT'
+                })
+            # Exit SHORT
+            elif curr_meter < 0.35 and abs(curr_slope) < 0.01:
+                signals.append({
+                    'Time': timestamps[i],
+                    'Value': curr_meter,
+                    'Type': 'EXIT-SHORT',
+                    'Color': '#4CAF50',
+                    'Text': '🟢 EXIT-SHORT'
+                })
+        return signals
 
     # Filter for today's data and market hours only
     if "Timestamp" in df.columns:
@@ -71,30 +142,103 @@ while True:
                      (df["Timestamp"] <= market_close)]
         import altair as alt
         with placeholder.container():
-            if selected_cols:
-                # Melt dataframe for Altair multi-line chart
-                df_melt = df_today.melt(id_vars=["Timestamp"], value_vars=selected_cols, var_name="Metric", value_name="Value")
-                chart = alt.Chart(df_melt).mark_line().encode(
-                    x=alt.X('Timestamp:T', title='Time', axis=alt.Axis(grid=True)),
-                    y=alt.Y('Value:Q', title='Value', scale=alt.Scale(domain=[0, 1]), axis=alt.Axis(grid=True)),
-                    color='Metric:N'
-                ).properties(
-                    width=900,
-                    height=400
-                )
-                st.altair_chart(chart, use_container_width=True)
+            # Only show composite plots by default
+            composite_metrics = ["Nifty_Composite", "Bank_Composite"]
+            smooth_metrics = ["Nifty_Smooth", "Bank_Smooth"]
+            slope_metrics = ["Nifty_Slope", "Bank_Slope"]
+            # Prepare data for Altair
+            df_plot = df_today.copy()
+            df_plot["Time"] = df_plot["Timestamp"]
 
-                # Calculate and display latest slope for each selected metric
-                st.markdown("### Latest Slope Values (window=3)")
-                for metric in selected_cols:
-                    if metric in df_today.columns:
-                        slopes = calc_slope(df_today[metric].values, window=3)
-                        latest_slope = slopes[-1] if len(slopes) > 0 else np.nan
-                        st.write(f"{metric}: {latest_slope:.4f}")
-            else:
-                st.info("Please select at least one plot to display.")
+            # Reference zones
+            ref_bands = [
+                alt.Chart(pd.DataFrame({"y": [0.4, 0.6]})).mark_rule(strokeDash=[2,2], color="#888", strokeWidth=1).encode(y="y"),
+                alt.Chart(pd.DataFrame({"y": [0.45, 0.55]})).mark_rect(opacity=0.08, color="#999").encode(y="y", y2="y")
+            ]
+
+            # Composite lines
+            lines = alt.Chart(df_plot).mark_line(strokeWidth=2).encode(
+                x=alt.X('Time:T', title='Time', axis=alt.Axis(grid=True, labelAngle=0, tickCount=10)),
+                y=alt.Y('Nifty_Composite:Q', title='Composite Value', scale=alt.Scale(domain=[0, 1]), axis=alt.Axis(grid=True)),
+                color=alt.value('#2196F3'),
+                tooltip=['Time:T', 'Nifty_Composite:Q']
+            ).properties(width=900, height=400)
+            lines2 = alt.Chart(df_plot).mark_line(strokeWidth=2).encode(
+                x='Time:T',
+                y='Bank_Composite:Q',
+                color=alt.value('#FF5722'),
+                tooltip=['Time:T', 'Bank_Composite:Q']
+            )
+
+            # Smooth lines
+            smooth1 = alt.Chart(df_plot).mark_line(strokeWidth=3).encode(
+                x='Time:T',
+                y='Nifty_Smooth:Q',
+                color=alt.value('#1976D2'),
+                tooltip=['Time:T', 'Nifty_Smooth:Q']
+            )
+            smooth2 = alt.Chart(df_plot).mark_line(strokeWidth=3).encode(
+                x='Time:T',
+                y='Bank_Smooth:Q',
+                color=alt.value('#E64A19'),
+                tooltip=['Time:T', 'Bank_Smooth:Q']
+            )
+
+            # Slope lines (momentum)
+            slope1 = alt.Chart(df_plot).mark_line(strokeDash=[4,2], color='#4CAF50', opacity=0.5).encode(
+                x='Time:T',
+                y='Nifty_Slope:Q',
+                tooltip=['Time:T', 'Nifty_Slope:Q']
+            )
+            slope2 = alt.Chart(df_plot).mark_line(strokeDash=[4,2], color='#F44336', opacity=0.5).encode(
+                x='Time:T',
+                y='Bank_Slope:Q',
+                tooltip=['Time:T', 'Bank_Slope:Q']
+            )
+
+            # --- Trading Signal Markers ---
+            nifty_signals = detect_signals(
+                df_plot["Nifty_Composite"].values,
+                df_plot["Nifty_Slope"].values,
+                df_plot["Time"].values
+            )
+            bank_signals = detect_signals(
+                df_plot["Bank_Composite"].values,
+                df_plot["Bank_Slope"].values,
+                df_plot["Time"].values
+            )
+            all_signals = pd.DataFrame(nifty_signals + bank_signals)
+
+            signal_layer = alt.Chart(all_signals).mark_text(fontSize=16, fontWeight='bold', dy=-10).encode(
+                x='Time:T',
+                y='Value:Q',
+                text='Text:N',
+                color='Color:N'
+            ) if not all_signals.empty else alt.Chart(pd.DataFrame({'Time':[], 'Value':[], 'Text':[], 'Color':[]})).mark_text()
+
+            # Compose chart
+            chart = alt.layer(
+                *ref_bands,
+                lines, lines2,
+                smooth1, smooth2,
+                slope1, slope2,
+                signal_layer
+            ).resolve_scale(
+                y='shared'
+            ).properties(
+                width=900,
+                height=400
+            )
+            st.altair_chart(chart, use_container_width=True)
+
+            # Calculate and display latest slope for each selected metric
+            st.markdown("### Latest Slope Values (window=3)")
+            for metric in ["Nifty_Composite", "Bank_Composite"]:
+                if metric in df_today.columns:
+                    slopes = calc_slope(df_today[metric].values, window=3)
+                    latest_slope = slopes[-1] if len(slopes) > 0 else np.nan
+                    st.write(f"{metric}: {latest_slope:.4f}")
             st.write(f"Last updated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
     else:
         st.warning("No 'Timestamp' column found in data.")
-
     time.sleep(REFRESH_INTERVAL)
