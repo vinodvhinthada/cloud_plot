@@ -408,7 +408,7 @@ while True:
                 color='Color:N',
                 tooltip=[
                     alt.Tooltip('Time:T', title='Time'),
-                    alt.Tooltip('Type:N', title='Signal'),
+                    alt.Tooltip('Type:N', title='Signal Type'),
                     alt.Tooltip('Value:Q', title='Meter Value')
                 ]
             ) if not all_signals.empty else alt.Chart(pd.DataFrame({'Time':[], 'Value':[], 'Text':[], 'Color':[]})).mark_text()
