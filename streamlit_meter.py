@@ -67,100 +67,116 @@ while True:
         df["Bank_Smooth"] = np.nan
         df["Bank_Slope"] = np.nan
 
-    # --- Dynamic Volatility-Adjusted Signal Logic ---
-    def generate_trade_signals_dynamic(df, base_entry=0.25, base_exit=0.15,
-                                       window_vol=10, confirm_window=3, min_gap=3):
-        df = df.copy()
-        df['signal'] = None
-        df['position'] = None
-
-        # --- Calculate rolling volatility ---
-        df['vol'] = df['composite'].rolling(window_vol).std()
-        df['vol'] = df['vol'].replace(0, np.nan).bfill()
-
-        # --- Dynamic thresholds ---
-        df['dyn_entry'] = base_entry * (df['vol'] / df['vol'].rolling(window_vol).mean()).clip(0.8, 1.5)
-        df['dyn_exit']  = base_exit  * (df['vol'] / df['vol'].rolling(window_vol).mean()).clip(0.8, 1.5)
-
-        position = None
-        last_signal_index = -min_gap
-
-        for i in range(confirm_window, len(df) - 1):
-            c_now = df.loc[i, 'composite']
-            prev_vals = df.loc[i - confirm_window:i - 1, 'composite'].values
-            rising = all(prev_vals[j] < prev_vals[j + 1] for j in range(len(prev_vals) - 1))
-            falling = all(prev_vals[j] > prev_vals[j + 1] for j in range(len(prev_vals) - 1))
-            volatility = abs(prev_vals[-1] - prev_vals[0])
-
-            dyn_entry = df.loc[i, 'dyn_entry']
-            dyn_exit  = df.loc[i, 'dyn_exit']
-
-            # --- ENTRY LONG ---
-            if position is None and rising and c_now > dyn_entry and volatility > 0.02 and (i - last_signal_index) > min_gap:
-                df.loc[i, 'signal'] = 'ENTRY_LONG'
-                position = 'LONG'
-                last_signal_index = i
-                continue
-
-            # --- EXIT LONG ---
-            if position == 'LONG' and falling and c_now < dyn_exit:
-                df.loc[i, 'signal'] = 'EXIT_LONG'
-                position = None
-                last_signal_index = i
-                continue
-
-            # --- ENTRY SHORT ---
-            if position is None and falling and c_now < -dyn_entry and volatility > 0.02 and (i - last_signal_index) > min_gap:
-                df.loc[i, 'signal'] = 'ENTRY_SHORT'
-                position = 'SHORT'
-                last_signal_index = i
-                continue
-
-            # --- EXIT SHORT ---
-            if position == 'SHORT' and rising and c_now > -dyn_exit:
-                df.loc[i, 'signal'] = 'EXIT_SHORT'
-                position = None
-                last_signal_index = i
-                continue
-
-            # --- False Signal Filters ---
-            if abs(c_now) < 0.05 or volatility < 0.01:
-                df.loc[i, 'signal'] = None
-                continue
-
-            # Avoid signals near turning points (local reversal)
-            if (df.loc[i - 1, 'composite'] - c_now) * (c_now - df.loc[i + 1, 'composite']) < 0:
-                df.loc[i, 'signal'] = None
-                continue
-
-            df.loc[i, 'position'] = position if position else None
-
-        return df
-
-    # --- Use dynamic signal logic for Nifty and BankNifty ---
+    # --- Trading Signal Detection Logic ---
+    # --- Enhanced Stateful Signal Logic ---
     def detect_signals(meter, price, timestamps, symbol):
         SIGNAL_SYMBOLS = {
-            "ENTRY_LONG": "🟢",
-            "EXIT_LONG": "🚪",
-            "ENTRY_SHORT": "🔴",
-            "EXIT_SHORT": "🚪"
+            "ENTER-LONG": "🟢",
+            "EXIT-LONG": "🚪",
+            "REVERSE-ENTER-SHORT": "🔄🔴",
+            "ENTER-SHORT": "🔴",
+            "EXIT-SHORT": "🚪",
+            "REVERSE-ENTER-LONG": "🔄🟢"
         }
-        df = pd.DataFrame({
-            'composite': meter,
-            'price': price,
-            'timestamp': timestamps
-        })
-        df = generate_trade_signals_dynamic(df)
+
+        state = {
+            "position": None,
+            "entry_value": None,
+            "highest": None,
+            "lowest": None,
+            "last_signal_time": None,
+            "cooldown": 0
+        }
+
         signals = []
-        for i, row in df.iterrows():
-            if row['signal']:
+        sustain_window = 3  # must hold level for 3 bars
+        cooldown_bars = 5   # ignore signals for next 5 bars after exit
+        meter = np.array(meter)
+        price = np.array(price)
+
+        for i in range(3, len(meter)):
+            curr = meter[i]
+            prev = meter[i-1]
+            slope = curr - prev
+            timestamp = timestamps[i]
+
+            if np.isnan(curr) or np.isnan(prev):
+                continue
+
+            # --- Cooldown logic ---
+            if state["cooldown"] > 0:
+                state["cooldown"] -= 1
+                continue
+
+            # --- Sustained confirmation (avoid noise) ---
+            last_n = meter[i-sustain_window:i]
+            if len(last_n) < sustain_window:
+                continue
+
+            avg_recent = np.mean(last_n)
+            stable_up = np.all(last_n > 0.58)
+            stable_down = np.all(last_n < 0.48)
+
+            signal = None
+
+            # LONG ENTRY
+            if state["position"] is None and stable_up and slope > 0:
+                signal = "ENTER-LONG"
+                state["position"] = "LONG"
+                state["entry_value"] = curr
+                state["highest"] = curr
+                state["lowest"] = curr
+
+            # LONG EXIT or Reverse
+            elif state["position"] == "LONG":
+                state["highest"] = max(state["highest"], curr)
+                drop = (state["highest"] - curr) / state["highest"]
+
+                if drop >= 0.08 or curr < 0.58:
+                    signal = "EXIT-LONG"
+                    state["position"] = None
+                    state["cooldown"] = cooldown_bars
+
+                elif stable_down and slope < 0:
+                    signal = "REVERSE-ENTER-SHORT"
+                    state["position"] = "SHORT"
+                    state["entry_value"] = curr
+                    state["lowest"] = curr
+
+            # SHORT ENTRY
+            elif state["position"] is None and stable_down and slope < 0:
+                signal = "ENTER-SHORT"
+                state["position"] = "SHORT"
+                state["entry_value"] = curr
+                state["lowest"] = curr
+                state["highest"] = curr
+
+            # SHORT EXIT or Reverse
+            elif state["position"] == "SHORT":
+                state["lowest"] = min(state["lowest"], curr)
+                rise = (curr - state["lowest"]) / abs(state["lowest"])
+
+                if rise >= 0.08 or curr > 0.48:
+                    signal = "EXIT-SHORT"
+                    state["position"] = None
+                    state["cooldown"] = cooldown_bars
+
+                elif stable_up and slope > 0:
+                    signal = "REVERSE-ENTER-LONG"
+                    state["position"] = "LONG"
+                    state["entry_value"] = curr
+                    state["highest"] = curr
+
+            # Record signal
+            if signal:
                 signals.append({
-                    "Time": row['timestamp'],
-                    "Value": row['composite'],
-                    "Type": row['signal'],
-                    "Color": '#388E3C' if 'LONG' in row['signal'] else '#D32F2F',
-                    "Text": SIGNAL_SYMBOLS.get(row['signal'], row['signal'])
+                    "Time": timestamp,
+                    "Value": curr,
+                    "Type": signal,
+                    "Color": '#388E3C' if 'LONG' in signal else '#D32F2F',
+                    "Text": SIGNAL_SYMBOLS.get(signal, '')
                 })
+
         return signals
 
     # Filter for today's data and market hours only
