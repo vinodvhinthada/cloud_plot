@@ -68,130 +68,228 @@ while True:
         df["Bank_Slope"] = np.nan
 
     # --- Trading Signal Detection Logic ---
-    # Enhanced Meter Signal Logic for Nifty/BankNifty
+    # --- Enhanced Stateful Signal Logic ---
     def detect_signals(meter, price, timestamps, symbol):
-        import datetime
-        SIGNAL_SYMBOLS = {
-            "ENTER-LONG": "🟢",
-            "EXIT-LONG": "🚪",
-            "REVERSE-ENTER-SHORT": "🔄🔴",
-            "ENTER-SHORT": "🔴",
-            "EXIT-SHORT": "🚪",
-            "REVERSE-ENTER-LONG": "🔄🟢"
-        }
-        state = {
-            "position": None,
-            "highest_since_entry": None,
-            "lowest_since_entry": None,
-            "last_signal_time": None,
-            "meter_history": [],
-            "prev_meter": None,
-            "wait_after_exit": 0
-        }
+        """
+        Stateful signal generator for a full series (meter, price, timestamps).
+        - meter: array-like of composite meter values (0..1)
+        - price: array-like of corresponding price action / price values (numeric)
+        - timestamps: array-like of timestamps (strings or pd.Timestamp)
+        - symbol: string (for label only)
+        Returns: list of signals dicts with Time, Value, Type, Color, Text
+        """
+        import numpy as np
+
+        # --- PARAMETERS (tune if required) ---
+        ENTRY_THRESH = 0.60           # require meter >= this to consider long entry
+        ENTRY_SLOPE = 0.02            # slope threshold for entry
+        ENTRY_PERSIST = 2             # require entry condition to hold for this many bars
+        EXIT_BUFFER = 0.65            # "watch" zone; falling below this triggers exit checks
+        TRAIL_DROP = 0.08             # drop-from-peak fraction to trigger immediate exit (8%)
+        SLOPE_EXIT = -0.02            # strong negative slope to exit
+        MIN_BARS_BETWEEN_SIGNALS = 2  # minimum bars between successive signals (~10 min if 5-min bars)
+        REV_THRESH = 0.50             # threshold to consider reversal into short
+        SHORT_ENTRY_SLOPE = -0.02
+        SHORT_ENTRY_PERSIST = 2
+        SHORT_EXIT_BUFFER = 0.45
+        REVERSE_MIN_BARS = 2          # require a couple bars before reversing to avoid noise
+
+        n = len(meter)
+        if n == 0:
+            return []
+
+        # Ensure numpy arrays
+        meter = np.array(meter, dtype=float)
+        price = np.array(price, dtype=float)
+
+        # compute slope series using your calc_slope (window=3)
+        try:
+            slopes = np.array(calc_slope(list(meter), window=3))
+        except Exception:
+            slopes = np.full(n, np.nan)
+            for i in range(1, n):
+                slopes[i] = meter[i] - meter[i-1]
+
         signals = []
-        for i in range(len(meter)):
-            curr_meter = meter[i]
-            curr_price = price[i]
-            timestamp = timestamps[i]
-            # Slope
-            slope = curr_meter - state["prev_meter"] if state["prev_meter"] is not None else 0
-            state["prev_meter"] = curr_meter
-            abs_slope = abs(slope)
+        position = None               # None, 'LONG', 'SHORT'
+        highest_since_entry = np.nan
+        lowest_since_entry = np.nan
+        last_signal_bar = -999
+        entry_confirm_count = 0
+        short_confirm_count = 0
 
-            # Safety: skip if not enough readings
-            if i < 1:
+        # helper to add signal
+        def push_signal(i, typ):
+            nonlocal position, highest_since_entry, lowest_since_entry, last_signal_bar
+            txt_map = {
+                "ENTER-LONG": "🟢 ENTRY-LONG",
+                "EXIT-LONG": "🚪 EXIT-LONG",
+                "ENTER-SHORT": "🔴 ENTRY-SHORT",
+                "EXIT-SHORT": "🟢 EXIT-SHORT",
+                "REVERSE-ENTER-LONG": "🔄 🟢 REVERSE-LONG",
+                "REVERSE-ENTER-SHORT": "🔄 🔴 REVERSE-SHORT"
+            }
+            color = '#388E3C' if 'LONG' in typ and 'EXIT' not in typ else '#D32F2F' if 'SHORT' in typ and 'EXIT' not in typ else '#FF9800'
+            signals.append({
+                "Time": timestamps[i],
+                "Value": float(meter[i]),
+                "Type": typ,
+                "Color": color,
+                "Text": txt_map.get(typ, typ)
+            })
+            last_signal_bar = i
+
+        for i in range(n):
+            # skip early bars where slope is NaN
+            if np.isnan(meter[i]) or np.isnan(slopes[i]):
                 continue
 
-            # Safety: skip if in neutral zone
-            if 0.55 <= curr_meter <= 0.6:
+            # avoid signals too close to previous signal (reduce spam)
+            if i - last_signal_bar < MIN_BARS_BETWEEN_SIGNALS:
+                # still update running peak/val for trailing stops if in position
+                if position == 'LONG':
+                    highest_since_entry = max(highest_since_entry, meter[i])
+                elif position == 'SHORT':
+                    lowest_since_entry = min(lowest_since_entry, meter[i])
                 continue
 
-            # Safety: skip if not enough momentum
-            if abs_slope < 0.02:
-                continue
+            slope = slopes[i]
+            curr = meter[i]
+            price_dir = price[i] - price[i-1] if i > 0 and not np.isnan(price[i-1]) else 0.0
 
-            # Safety: confirm with price direction
-            price_dir = curr_price - price[i-1] if i > 0 else 0
-
-            # Maintain meter history (last 3)
-            state["meter_history"].append(curr_meter)
-            if len(state["meter_history"]) > 3:
-                state["meter_history"].pop(0)
-
-            # Minimum time gap filter (10 min)
-            if state["last_signal_time"]:
-                try:
-                    time_diff = (datetime.datetime.strptime(str(timestamp), "%Y-%m-%d %H:%M") -
-                                 datetime.datetime.strptime(str(state["last_signal_time"]), "%Y-%m-%d %H:%M")).total_seconds()/60
-                    if time_diff < 10:
-                        continue
-                except Exception:
-                    pass
-
-            # Wait for 2 new readings after exit before re-enter
-            if state["wait_after_exit"] > 0:
-                state["wait_after_exit"] -= 1
-                continue
-
-            # Update highest/lowest since entry
-            if state["position"] == "LONG":
-                state["highest_since_entry"] = max(state["highest_since_entry"], curr_meter)
-            elif state["position"] == "SHORT":
-                state["lowest_since_entry"] = min(state["lowest_since_entry"], curr_meter)
+            # update confirm counters
+            # entry confirm for LONG: require consecutive meters above ENTRY_THRESH and positive slope
+            if curr >= ENTRY_THRESH and slope >= ENTRY_SLOPE and price_dir > 0:
+                entry_confirm_count += 1
             else:
-                state["highest_since_entry"] = curr_meter
-                state["lowest_since_entry"] = curr_meter
+                entry_confirm_count = 0
 
-            drop_from_high = (state["highest_since_entry"] - curr_meter)/state["highest_since_entry"] if state["highest_since_entry"] else 0
-            rise_from_low = (curr_meter - state["lowest_since_entry"])/state["lowest_since_entry"] if state["lowest_since_entry"] else 0
+            # entry confirm for SHORT
+            if curr <= REV_THRESH and slope <= SHORT_ENTRY_SLOPE and price_dir < 0:
+                short_confirm_count += 1
+            else:
+                short_confirm_count = 0
 
-            signal = None
+            # maintain highest/lowest for trailing logic
+            if position == 'LONG':
+                if np.isnan(highest_since_entry):
+                    highest_since_entry = curr
+                else:
+                    highest_since_entry = max(highest_since_entry, curr)
+            elif position == 'SHORT':
+                if np.isnan(lowest_since_entry):
+                    lowest_since_entry = curr
+                else:
+                    lowest_since_entry = min(lowest_since_entry, curr)
+            else:
+                # not in position: keep base values
+                highest_since_entry = curr
+                lowest_since_entry = curr
 
-            # --- LONG LOGIC ---
-            if state["position"] != "LONG" and curr_meter > 0.6 and slope > 0 and price_dir > 0:
-                signal = "ENTER-LONG"
-                state["position"] = "LONG"
-                state["highest_since_entry"] = curr_meter
-                state["lowest_since_entry"] = curr_meter
+            # ========== ENTRY logic ===========
+            if position is None:
+                # Long entry confirmed
+                if entry_confirm_count >= ENTRY_PERSIST:
+                    # Enter LONG
+                    push_signal(i, "ENTER-LONG")
+                    position = "LONG"
+                    highest_since_entry = curr
+                    lowest_since_entry = curr
+                    entry_confirm_count = 0
+                    short_confirm_count = 0
+                    continue
 
-            elif state["position"] == "LONG" and (drop_from_high >= 0.1 or curr_meter < 0.65 or (len(state["meter_history"]) == 3 and all(x < state["meter_history"][-2] for x in state["meter_history"]))):
-                signal = "EXIT-LONG"
-                state["position"] = None
-                state["wait_after_exit"] = 2
+                # Short entry confirmed
+                if short_confirm_count >= SHORT_ENTRY_PERSIST:
+                    push_signal(i, "ENTER-SHORT")
+                    position = "SHORT"
+                    highest_since_entry = curr
+                    lowest_since_entry = curr
+                    entry_confirm_count = 0
+                    short_confirm_count = 0
+                    continue
 
-            elif curr_meter < 0.5 and slope < 0:
-                signal = "REVERSE-ENTER-SHORT"
-                state["position"] = "SHORT"
-                state["highest_since_entry"] = curr_meter
-                state["lowest_since_entry"] = curr_meter
+            # ========== IN-POSITION EXIT / REVERSE logic ===========
+            if position == "LONG":
+                # trailing drop
+                drop_from_high = 0.0
+                if not np.isnan(highest_since_entry) and highest_since_entry > 0:
+                    drop_from_high = (highest_since_entry - curr) / highest_since_entry
 
-            # --- SHORT LOGIC ---
-            elif state["position"] != "SHORT" and curr_meter < 0.5 and slope < 0 and price_dir < 0:
-                signal = "ENTER-SHORT"
-                state["position"] = "SHORT"
-                state["highest_since_entry"] = curr_meter
-                state["lowest_since_entry"] = curr_meter
+                # Immediate exit if steep drop from peak
+                if drop_from_high >= TRAIL_DROP:
+                    push_signal(i, "EXIT-LONG")
+                    position = None
+                    highest_since_entry = np.nan
+                    lowest_since_entry = np.nan
+                    continue
 
-            elif state["position"] == "SHORT" and (rise_from_low >= 0.1 or curr_meter > 0.45 or (len(state["meter_history"]) == 3 and all(x > state["meter_history"][-2] for x in state["meter_history"]))):
-                signal = "EXIT-SHORT"
-                state["position"] = None
-                state["wait_after_exit"] = 2
+                # Exit on strong negative slope
+                if slope <= SLOPE_EXIT:
+                    push_signal(i, "EXIT-LONG")
+                    position = None
+                    highest_since_entry = np.nan
+                    lowest_since_entry = np.nan
+                    continue
 
-            elif curr_meter > 0.6 and slope > 0:
-                signal = "REVERSE-ENTER-LONG"
-                state["position"] = "LONG"
-                state["highest_since_entry"] = curr_meter
-                state["lowest_since_entry"] = curr_meter
+                # Exit if meter falls into watch/weak zone and slope weakens (early exit)
+                if curr < EXIT_BUFFER and slope < 0.01:
+                    push_signal(i, "EXIT-LONG")
+                    position = None
+                    highest_since_entry = np.nan
+                    lowest_since_entry = np.nan
+                    continue
 
-            if signal:
-                state["last_signal_time"] = timestamp
-                signals.append({
-                    "Time": timestamp,
-                    "Value": curr_meter,
-                    "Type": signal,
-                    "Color": '#388E3C' if 'LONG' in signal else '#D32F2F' if 'SHORT' in signal else '#FF9800',
-                    "Text": SIGNAL_SYMBOLS.get(signal, '')
-                })
+                # Reverse to SHORT if strong reversal signals appear (avoid immediate flip—require consecutive)
+                if curr < REV_THRESH and slope <= SHORT_ENTRY_SLOPE and short_confirm_count >= REVERSE_MIN_BARS:
+                    push_signal(i, "REVERSE-ENTER-SHORT")
+                    position = "SHORT"
+                    highest_since_entry = curr
+                    lowest_since_entry = curr
+                    entry_confirm_count = 0
+                    short_confirm_count = 0
+                    continue
+
+            elif position == "SHORT":
+                # rise from low
+                rise_from_low = 0.0
+                if not np.isnan(lowest_since_entry) and lowest_since_entry > 0:
+                    rise_from_low = (curr - lowest_since_entry) / lowest_since_entry
+
+                # immediate exit if strong bounce
+                if rise_from_low >= TRAIL_DROP:
+                    push_signal(i, "EXIT-SHORT")
+                    position = None
+                    highest_since_entry = np.nan
+                    lowest_since_entry = np.nan
+                    continue
+
+                # exit on strong positive slope
+                if slope >= abs(SLOPE_EXIT):
+                    push_signal(i, "EXIT-SHORT")
+                    position = None
+                    highest_since_entry = np.nan
+                    lowest_since_entry = np.nan
+                    continue
+
+                # exit if meter moves back to weak short zone
+                if curr > SHORT_EXIT_BUFFER and slope > -0.01:
+                    push_signal(i, "EXIT-SHORT")
+                    position = None
+                    highest_since_entry = np.nan
+                    lowest_since_entry = np.nan
+                    continue
+
+                # reverse to LONG if strong flip
+                if curr > ENTRY_THRESH and slope >= ENTRY_SLOPE and entry_confirm_count >= REVERSE_MIN_BARS:
+                    push_signal(i, "REVERSE-ENTER-LONG")
+                    position = "LONG"
+                    highest_since_entry = curr
+                    lowest_since_entry = curr
+                    entry_confirm_count = 0
+                    short_confirm_count = 0
+                    continue
+
         return signals
 
     # Filter for today's data and market hours only
