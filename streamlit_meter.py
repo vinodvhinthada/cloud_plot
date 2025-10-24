@@ -407,7 +407,7 @@ while True:
                 text='Text:N',
                 color='Color:N',
                 tooltip=[
-                    alt.Tooltip('Time:T', title='Time'),
+                    alt.Tooltip('Time:T', title='Time', format='%Y-%m-%d %H:%M:%S'),
                     alt.Tooltip('Type:N', title='Signal Type'),
                     alt.Tooltip('Value:Q', title='Meter Value')
                 ]
